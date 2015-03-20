@@ -34,8 +34,7 @@ Return cons cell of the form (begin . end)
         (setq end (point))
         (cons beginning end)))
      ;; The description of a description list
-     ((and (org-at-item-p)
-           (save-excursion (org-beginning-of-item) (org-at-item-description-p)))
+     ((save-excursion (org-backward-element) (org-at-item-description-p))
       (cons 
        (save-excursion (org-beginning-of-item) (search-forward "::" nil t))
        (save-excursion (org-end-of-item) (point))))
@@ -85,7 +84,7 @@ Assume point is at the beginning of 'study'."
     (backward-char 6) ;; Go to beginning of studystamp TODO do this by rearranging save-excursions isntead
     (let ((e (org-element-studystamp-parser)))
       (flash-region (org-element-property :answer-begin e)
-                    (org-element-property :answer-end e)))))z
+                    (org-element-property :answer-end e)))))
 
 (defun org-element-studystamp-interpreter (studystamp contents)
   "interpret STUDYSTAMP object as org syntax.
@@ -116,7 +115,8 @@ beginning position."
 (defun org-study-update (score)
   (save-excursion
     (let ((missed-it nil)
-          (e (org-element-studystamp-parser)))
+          (e (org-element-studystamp-parser))
+          (late-bonus))
       (org-element-put-property e :ease
                                 (truncate
                                  (let ((oldease (org-element-property :ease e)))
@@ -128,19 +128,33 @@ beginning position."
                                                     oldease)
                                                    ((= score 3)
                                                     (* oldease org-study-easy-bonus)))))))
+      ;; bonus for remembering overdue cards
+      (setq late-bonus (/ (- (org-today) (org-element-property :review-day e))
+                          (case score
+                            (0 1)
+                            (1 4) 
+                            (2 2)
+                            (3 1))))
+
       (if (= score 0)
-          (org-element-put-property e :interval 0)
+          (progn
+            (org-element-put-property e :interval 0)
+            (org-element-put-property e :review-day (org-today)))
         (org-element-put-property e :interval
-                                  (truncate (* (org-element-property :ease e)
-                                               (org-element-property :interval e))))
+                                  (max 1
+                                       (truncate (* (org-element-property :ease e)
+                                                    (+ (org-element-property :interval e) 
+                                                       late-bonus)))))
         (org-element-put-property e :review-day
                                   (+ (org-element-property :interval e)
-                                     (org-element-property :review-day e))))
+                                     (org-today))))
+
+      ;; Update the text
       (delete-region (org-element-property :begin e)
                      (org-element-property :end e))
       (insert (org-element-studystamp-interpreter e nil)))))
 
-;;; Presenting reviewables notes to the user
+;;; Presenting reviewable notes to the user
 (defun org-study-hide-answer (studystamp)
   (overlay-put (make-overlay  (org-element-property :answer-begin studystamp)
                               (org-element-property :answer-end studystamp))
@@ -182,7 +196,8 @@ beginning position."
 (defun org-study-next ()
   (interactive)
   (forward-char)
-  (goto-char (cdr (org-element-studystamp-successor))))
+  (goto-char (cdr (org-element-studystamp-successor)))
+  (org-show-entry))
 
 (defun org-study-next-for-review (&optional idempotent)
   "Go to the next question that's due for review"
@@ -205,15 +220,17 @@ beginning position."
   (interactive)
   (let ((e (org-study-next-for-review 'idempotent))
         (score))
+    (unless (org-study-due-for-review-p e)
+      (error "Card not ready for review"))
     (org-study-reveal-answer e)
     (setq score      (case
-                         (read-char-choice "Did you get it? 0,1,2,3 or space" '(?0 ?1 ?2 ?3 ? ))
-                       (?0      0)
-                       (?1      1)
-                       ((?2 ? ) 2)
-                       (?3      3)))
+                         (read-char-choice "Did you get it? 1,2,3,4 or space"
+                                           '(?1 ?2 ?3 ?4 ? ))
+                       (?1      0)
+                       (?2      1)
+                       ((?3 ? ) 2)
+                       (?4      3)))
     (org-study-update score)
-    
     (unless (> score 0)
       (org-study-hide-answer e))))
 

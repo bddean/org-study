@@ -10,4 +10,4 @@ Right now, only simple fill-in-the-blank questions with a single
 answer are supported.
 
 The spaced repetition algorithm I use is based on the flashcard
-program [[http://ankisrs.net/][anki]]. Or at least, it will be when I get it working.
+program [[http://ankisrs.net/][anki]].
