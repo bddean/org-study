@@ -1,0 +1,13 @@
+Study Emacs [[http://orgmode.org][Org Mode]] files with [[http://en.wikipedia.org/wiki/Spaced_repetition][spaced repetition]].
+
+Spaced repetition is a useful tool for memorizing content. But most
+spaced repetition software divides knowledge into atomic flashcards
+that aren't synchronized with notes. This extension to Org Mode
+provides annotations for studying notes directly. Parts of a file are
+marked for study by an unobtrusive annotation.
+
+Right now, only simple fill-in-the-blank questions with a single
+answer are supported.
+
+The spaced repetition algorithm I use is based on the flashcard
+program [[http://ankisrs.net/][anki]]. Or at least, it will be when I get it working.
