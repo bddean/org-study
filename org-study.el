@@ -5,8 +5,17 @@
     (overlay-put overlay 'face 'secondary-selection)
     (run-with-timer (or timeout 0.35) nil 'delete-overlay overlay)))
 
+(defvar org-study-hour-day-begins 4)
+(defun org-study-today ()
+  "Like org-today, but start days later than midnight. So if the
+user reviews cards after midnight it doesn't count as the next
+day."
+  (- (org-today) (if (<= (string-to-int (format-time-string "%H"))
+                         org-study-hour-day-begins)
+                     0
+                   1)))
 
-;;; Define a stamp that schedules a
+;;; Define a stamp that schedules a note for review
 (require 'org-element)
 (add-to-list 'org-element-all-objects    'studystamp)
 (add-to-list 'org-element-all-successors 'studystamp)
@@ -129,7 +138,7 @@ beginning position."
                                                    ((= score 3)
                                                     (* oldease org-study-easy-bonus)))))))
       ;; bonus for remembering overdue cards
-      (setq late-bonus (/ (- (org-today) (org-element-property :review-day e))
+      (setq late-bonus (/ (- (org-study-today) (org-element-property :review-day e))
                           (case score
                             (0 1)
                             (1 4) 
@@ -139,7 +148,7 @@ beginning position."
       (if (= score 0)
           (progn
             (org-element-put-property e :interval 0)
-            (org-element-put-property e :review-day (org-today)))
+            (org-element-put-property e :review-day (org-study-today)))
         (org-element-put-property e :interval
                                   (max 1
                                        (truncate (* (org-element-property :ease e)
@@ -147,7 +156,7 @@ beginning position."
                                                        late-bonus)))))
         (org-element-put-property e :review-day
                                   (+ (org-element-property :interval e)
-                                     (org-today))))
+                                     (org-study-today))))
 
       ;; Update the text
       (delete-region (org-element-property :begin e)
@@ -167,7 +176,7 @@ beginning position."
 
 (defun org-study-due-for-review-p (&optional studystamp)
   (setq studystamp (or studystamp (org-element-studystamp-parser)))
-  (<= (org-element-property :review-day studystamp) (org-today)))
+  (<= (org-element-property :review-day studystamp) (org-study-today)))
 
 (defun org-study-prepare-buffer ()
   (let ((e))
