@@ -219,9 +219,29 @@ beginning position."
       (while (setq e (org-study-next-for-review))
         (org-study-hide-answer e)))))
 
+(defvar org-study-complements '(("true" "false")
+                                ("upright" "inverted")
+                                ("is" "isn't")
+                                ("does" "doesn't")))
 (defun org-study-create ()
   "Insert a studystamp at point"
   (interactive)
+  (when (region-active-p)
+    (let* ((s (region-beginning)) (e (region-end))
+           (region-text (trim-string
+                         (buffer-substring-no-properties s e)))
+           (mult-choice-group (loop for l in org-study-complements
+                                    if (member region-text l) 
+                                    return (mapconcat (lambda (x)
+                                                        (if (equal x region-text)
+                                                            (concat "*" x)
+                                                          x)) l "/"))))
+      (if mult-choice-group
+          (progn
+            (delete-region s e)
+            (insert (concat "[" mult-choice-group "]")))
+        (goto-char s) (insert "[")
+        (goto-char (1+ e)) (insert "]"))))
   (org-insert-time-stamp (current-time) nil 'inactive "STUDY{"
                          (format ",1,%.2f}" org-study-starting-ease))
   (save-excursion
