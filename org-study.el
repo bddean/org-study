@@ -1,10 +1,17 @@
+(require 'cl)
+
 ;;; Utilities
 (defun flash-region (start end &optional timeout)
   "Borrowed from skewer.el. Temporarily highlight region from START to END."
   (let ((overlay (make-overlay start end)))
     (overlay-put overlay 'face 'secondary-selection)
     (run-with-timer (or timeout 0.35) nil 'delete-overlay overlay)))
-
+(defun trim-string (string)
+  "Remove white spaces in beginning and ending of STRING.
+White space here is any of: space, tab, emacs newline (line feed, ASCII 10).
+From http://xahlee.blogspot.com/2011/09/emacs-lisp-function-to-trim-string.html"
+  (replace-regexp-in-string "\\`[ \t\n]*" ""
+                            (replace-regexp-in-string "[ \t\n]*\\'" "" string)))
 (defvar org-study-hour-day-begins 4)
 (defun org-study-today ()
   "Like org-today, but start days later than midnight. So if the
@@ -26,33 +33,54 @@ day."
           "\\([0-9]*\\.?[0-9]*\\)" ; ease factor
           "}"))
 
-(defun org-study-answer-bounds ()
-  "Figure out the boundaries of the answer, the thing the user
-needs to guess, at point.
+(defvar org-study-multiple-choice-re "\\[[^]/]*/[^]/]*\\]")
+(defvar org-study-answer-categories
+  '((multiple-choice
+     (looking-back (concat org-study-multiple-choice-re "\s*"))
+     (cons (match-beginning 0) (match-end 0)))
+    (explicit
+     (looking-back "\\][\t ]*")
+     (cons (match-beginning 0) (match-end 0)))
+    (description
+     (save-excursion (org-backward-element) (org-at-item-description-p))
+     (cons 
+      (save-excursion (org-beginning-of-item) (search-forward "::" nil t))
+      (save-excursion (org-end-of-item) (point))))
+    (subtree
+     (or (org-at-heading-p) (org-at-item-p))
+     (cons (progn (forward-line) (point))
+           (progn (org-end-of-subtree) (point)))))
 
-Return cons cell of the form (begin . end)
-"
-  (save-excursion
-    (cond
-     ;; Delimit answer explicitly with brackets
-     ((looking-back "\\][\t ]*")
-      (let ((beginning nil) (end nil))
-        (backward-list)
-        (setq beginning (point))
-        (forward-list)
-        (setq end (point))
-        (cons beginning end)))
-     ;; The description of a description list
-     ((save-excursion (org-backward-element) (org-at-item-description-p))
-      (cons 
-       (save-excursion (org-beginning-of-item) (search-forward "::" nil t))
-       (save-excursion (org-end-of-item) (point))))
-     ;; Entire subtree
-     ((org-at-heading-p)
-      (cons (progn (forward-line) (point))
-            (progn (outline-end-of-subtree) (point))))
-     (t (cons (point) (point)))
-     )))
+  "A list of card types recognizable by studystamps. Each type is
+in the form NAME, PREDICATE, BOUNDS, where NAME is a symbol to
+name the type, PREDICATE is an expression that will return
+non-nil if point is at a studystamp of that kind, and BOUNDS is
+an expression returning a cons cell of the boundaries of the
+answer.")
+
+(defun org-study-get-answer-category (&optional studystamp)
+  " If studystamp is nil, assume we are at the beginning of the
+studystamp. Can't parse it because this function is called from
+`org-element-studystamp-parser"
+  (when studystamp (goto-char (org-element-property :begin studystamp)))
+  (or (save-excursion (loop for category in org-study-answer-categories
+                            if (eval (nth 1 category))
+                            return category))
+      '(default
+         t
+         (cons (point) (point)))))
+
+(defun org-study-lookup-answer-category (name)
+  (loop for category in org-study-answer-categories
+        if (eq name (nth 0 category)) return answer-category))
+
+(defun org-study-answer-bounds (&optional studystamp)
+  " If studystamp is nil, assume we are at the beginning of the
+studystamp. Can't parse it because this function is called from
+`org-element-studystamp-parser"
+  (when studystamp (goto-char (org-element-property :begin studystamp)))  
+  (save-excursion (eval (nth 2 (org-study-get-answer-category)))))
+
 
 (defun org-element-studystamp-parser ()
   "Parse studystamp object at point.
@@ -72,6 +100,7 @@ Assume point is at the beginning of 'study'."
               (org-match-string-no-properties 1))))
           (interval (string-to-int (org-match-string-no-properties 2)))
           (ease (string-to-int (org-match-string-no-properties 3)))
+          (answer-category (org-study-get-answer-category))
           (answer-bounds (org-study-answer-bounds)))
       (list 'studystamp
             (list :begin begin
@@ -79,6 +108,7 @@ Assume point is at the beginning of 'study'."
                   :review-day review-day
                   :interval interval
                   :ease ease
+                  :category-name (nth 0 answer-category)
                   :answer-end (car answer-bounds)
                   :answer-begin (cdr answer-bounds))))))
 
@@ -119,8 +149,6 @@ beginning position."
 (defvar org-study-starting-ease 2.50)
 (defvar org-study-easy-bonus 1.30)
 
-;; FIXME: update function currently assumes we are reviewing a card
-;; that was assigned yesterday
 (defun org-study-update (score)
   (save-excursion
     (let ((missed-it nil)
@@ -165,10 +193,16 @@ beginning position."
 
 ;;; Presenting reviewable notes to the user
 (defun org-study-hide-answer (studystamp)
-  (overlay-put (make-overlay  (org-element-property :answer-begin studystamp)
-                              (org-element-property :answer-end studystamp))
-               'face (list :underline (face-attribute 'default :foreground)
-                           :foreground (face-attribute 'default :background)))) 
+  (let* ((s (org-element-property :answer-begin studystamp))
+         (e (org-element-property :answer-end studystamp))
+         (ov (make-overlay s e)))
+    (if (eq (org-element-property :category-name studystamp) 'multiple-choice)
+        (overlay-put ov 'display (replace-in-string (buffer-substring-no-properties s e)
+                                                    "*" "")
+                     'face (list :underline (face-attribute 'default :foreground)))
+      (overlay-put ov
+                   'face (list :underline (face-attribute 'default :foreground)
+                               :foreground (face-attribute 'default :background)))))) 
 
 (defun org-study-reveal-answer (studystamp)
   (remove-overlays (org-element-property :answer-begin studystamp)
@@ -183,11 +217,7 @@ beginning position."
     (save-excursion
       (beginning-of-buffer)
       (while (setq e (org-study-next-for-review))
-        (org-study-hide-answer e)
-        ))))
-
-
-
+        (org-study-hide-answer e)))))
 
 (defun org-study-create ()
   "Insert a studystamp at point"
@@ -252,6 +282,7 @@ beginning position."
     map)
   "Keymap when cursor is on a studystamp for `org-study'")
 
+
 (defun org-study-font-lock ()
   (font-lock-add-keywords nil
                           `(( ,org-studystamp-re 
@@ -271,8 +302,38 @@ beginning position."
                                      (put-text-property
                                       s e 'keymap org-study-studystamp-map
                                       ))
-                                   nil))
-                              ))))
+                                   nil)))
+                            (,org-study-multiple-choice-re
+                             (0 (save-match-data
+                                  (save-excursion
+                                    (let ((s (match-beginning 0))
+                                          (e (match-end 0))
+                                          (correct-answer))
+                                      (goto-char s)
+                                      (when (search-forward "*" e t)
+                                        (setq all-options (buffer-substring s e))
+                                        (setq correct-answer
+                                              (buffer-substring (point)
+                                                                (1- (save-excursion
+                                                                      (search-forward-regexp
+                                                                       "/\\|]" e t)))))
+                                        ;; (compose-region s e (concat "\t" correct-answer))
+                                        (put-text-property s e 'display correct-answer)
+                                        (put-text-property s e 'face 'bold)
+                                        (put-text-property s e 'help-echo all-options)
+                                        ;; (put-text-property
+                                        ;;  s e 'modification-hooks
+                                        ;;  (list
+                                        ;;   clear-line-properties))
+                                        ))
+                                    nil)
+                                  ))))))
+
+(defun org-remove-font-lock-display-properties (beg end)
+  "Originally defined in org.el, overwritten to remove all
+display properties. Maybe there is a hidden disadvantage to
+this."
+  (remove-text-properties beg end '(display t)))
 
 ;;; Hooks into org-mode etc
 (add-hook 'org-mode-hook 'org-study-font-lock)
@@ -281,5 +342,3 @@ beginning position."
 
 
 (provide 'org-study)
-
-
