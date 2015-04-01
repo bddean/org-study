@@ -220,6 +220,8 @@ beginning position."
         (org-study-hide-answer e)))))
 
 (defvar org-study-complements '(("true" "false")
+                                ("positive" "negative")
+                                ("virtual" "real")
                                 ("upright" "inverted")
                                 ("is" "isn't")
                                 ("does" "doesn't")))
