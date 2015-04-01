@@ -7,7 +7,7 @@ provides annotations for studying notes directly. Parts of a file are
 marked for study by an unobtrusive annotation.
 
 Right now, only simple fill-in-the-blank questions with a single
-answer are supported.
+answer and multiple choice questions are supported.
 
 The spaced repetition algorithm I use is based on the flashcard
 program [[http://ankisrs.net/][anki]].
