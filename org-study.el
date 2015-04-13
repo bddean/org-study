@@ -33,7 +33,109 @@ day."
           "\\([0-9]*\\.?[0-9]*\\)" ; ease factor
           "}"))
 
+(defun org-element-studystamp-parser ()
+  "Parse studystamp object at point.
+
+Return a list whose CAR is `studystamp' and CDR is a plist with
+`:begin', `:end', `:answer-begin', `:answer-end', `:review-day',
+`:interval', and `:ease' keywords.
+
+Assume point is at the beginning of 'study'." 
+  (save-excursion
+    (looking-at org-studystamp-re)
+    (let ((begin (match-beginning 0))
+          (end (match-end 0))
+          (review-day
+           (save-match-data
+             (org-time-string-to-absolute
+              (org-match-string-no-properties 1))))
+          (interval (string-to-int (org-match-string-no-properties 2)))
+          (ease (string-to-int (org-match-string-no-properties 3)))
+          (answer-category (org-study-get-answer-category))
+          (answer-bounds (org-study-answer-bounds)))
+      (list 'studystamp
+            (list :begin begin
+                  :end end
+                  :review-day review-day
+                  :interval interval
+                  :ease ease
+                  :category-name (nth 0 answer-category)
+                  :answer-end (car answer-bounds)
+                  :answer-begin (cdr answer-bounds))))))
+
+(defun org-element-studystamp-interpreter (studystamp contents)
+  "interpret STUDYSTAMP object as org syntax.
+contents is nil"
+  (format "STUDY{%s,%d,%.2f}"
+          (format-time-string (org-time-stamp-format nil 'inactive)
+                              (org-time-from-absolute
+                               (org-element-property :review-day
+                                                     studystamp)))
+          (org-element-property :interval studystamp)
+          (org-element-property :ease     studystamp)))
+
+(defun org-element-studystamp-successor ()
+  "Search for the next studystamp object.
+
+Return value is a cons cell whose CAR is `studystamp' and CDR is
+beginning position."
+  (save-excursion
+    (when (search-forward-regexp org-studystamp-re nil t)
+      (cons 'studystamp (match-beginning 0)))))
+
+
+
+(add-to-list 'org-element-all-objects    'multchoice)
+(add-to-list 'org-element-all-successors 'multchoice)
 (defvar org-study-multiple-choice-re "\\[[^]/]*/[^]/]*\\]")
+(defun org-element-study-multchoice-interpreter (multchoice &optional contents)
+  (let ((i -1))
+    (concat "["
+            (mapconcat
+             (lambda (choice)
+               (setq i (1+ i))
+               (if (equal i (org-element-property :answer-index multchoice))
+                   (concat "*" choice)
+                 choice))
+             (org-element-property :choices multchoice)
+             "/")
+            "]")))
+(defun org-element-study-multchoice-parser ()
+  (save-excursion
+    (looking-at org-study-multiple-choice-re)
+    (let ((begin (match-beginning 0))
+          (end (match-end 0))
+          (raw-choices (split-string (substring (match-string 0) 1 -1) "/"))
+          (c)
+          (choices)
+          (answer-index))
+      (setq choices (loop for i from 0 to (length raw-choices)
+                          do (setq c (nth i raw-choices))
+                          while c
+                          collect (if (= (elt c 0) ?*)
+                                      (progn (setq answer-index i)
+                                             (setq c (substring c 1)))
+                                    c)))
+      (list 'multchoice (list :begin begin
+                              :end end
+                              :choices choices
+                              :answer-index answer-index)))))
+
+(defun org-element-multchoice-successor ()
+  (save-excursion
+    (when (search-forward-regexp org-study-multiple-choice-re nil t)
+      (cons 'multchoice (match-beginning 0)))))
+
+(defun org-cycle-multiple-choice-answers ()
+  (interactive)
+  (let ((e (org-element-study-multchoice-parser)))
+    (org-element-put-property e :answer-index
+                              (% (1+ (org-element-property :answer-index e))
+                                 (length (org-element-property :choices e))))
+    (delete-region (org-element-property :begin e)
+                   (org-element-property :end e))
+    (save-excursion (insert (org-element-study-multchoice-interpreter e))))
+  )
 (defvar org-study-answer-categories
   '((multiple-choice
      (looking-back (concat org-study-multiple-choice-re "\s*"))
@@ -87,36 +189,6 @@ studystamp. Can't parse it because this function is called from
   (save-excursion (eval (nth 2 (org-study-get-answer-category)))))
 
 
-(defun org-element-studystamp-parser ()
-  "Parse studystamp object at point.
-
-Return a list whose CAR is `studystamp' and CDR is a plist with
-`:begin', `:end', `:answer-begin', `:answer-end', `:review-day',
-`:interval', and `:ease' keywords.
-
-Assume point is at the beginning of 'study'." 
-  (save-excursion
-    (looking-at org-studystamp-re)
-    (let ((begin (match-beginning 0))
-          (end (match-end 0))
-          (review-day
-           (save-match-data
-             (org-time-string-to-absolute
-              (org-match-string-no-properties 1))))
-          (interval (string-to-int (org-match-string-no-properties 2)))
-          (ease (string-to-int (org-match-string-no-properties 3)))
-          (answer-category (org-study-get-answer-category))
-          (answer-bounds (org-study-answer-bounds)))
-      (list 'studystamp
-            (list :begin begin
-                  :end end
-                  :review-day review-day
-                  :interval interval
-                  :ease ease
-                  :category-name (nth 0 answer-category)
-                  :answer-end (car answer-bounds)
-                  :answer-begin (cdr answer-bounds))))))
-
 (defun org-study-create ()
   "Insert a studystamp at point"
   (interactive)
@@ -129,25 +201,6 @@ Assume point is at the beginning of 'study'."
     (let ((e (org-element-studystamp-parser)))
       (flash-region (org-element-property :answer-begin e)
                     (org-element-property :answer-end e)))))
-
-(defun org-element-studystamp-interpreter (studystamp contents)
-  "interpret STUDYSTAMP object as org syntax.
-contents is nil"
-  (format "STUDY{%s,%d,%.2f}"
-          (format-time-string (org-time-stamp-format nil 'inactive)
-                              (org-time-from-absolute
-                               (org-element-property :review-day
-                                                     studystamp)))
-          (org-element-property :interval studystamp)
-          (org-element-property :ease     studystamp)))
-(defun org-element-studystamp-successor ()
-  "Search for the next studystamp object.
-
-Return value is a cons cell whose CAR is `studystamp' and CDR is
-beginning position."
-  (save-excursion
-    (when (search-forward-regexp org-studystamp-re nil t)
-      (cons 'studystamp (match-beginning 0)))))
 
 ;;; Creating and reviewing flashcards
 ;; TODO: allow customization with properties in the org file
@@ -202,12 +255,12 @@ beginning position."
          (e (org-element-property :answer-end studystamp))
          (ov (make-overlay s e)))
     (if (eq (org-element-property :category-name studystamp) 'multiple-choice)
-        (overlay-put ov 'display (replace-in-string (buffer-substring-no-properties s e)
-                                                    "*" "")
-                     'face (list :underline (face-attribute 'default :foreground)))
-      (overlay-put ov
-                   'face (list :underline (face-attribute 'default :foreground)
-                               :foreground (face-attribute 'default :background)))))) 
+        (progn (overlay-put ov 'display
+                            (replace-in-string (buffer-substring-no-properties s e) "*" ""))
+               (overlay-put ov 'face
+                            (list :underline (face-attribute 'default :foreground))))
+      (overlay-put ov 'face (list :underline (face-attribute 'default :foreground)
+                                  :foreground (face-attribute 'default :background)))))) 
 
 (defun org-study-reveal-answer (studystamp)
   (remove-overlays (org-element-property :answer-begin studystamp)
@@ -300,12 +353,19 @@ beginning position."
     (unless (> score 0)
       (org-study-hide-answer e))))
 
+(defun org-study-show-boundaries (&optional e)
+  (interactive)
+  (setq e (or e (org-element-studystamp-parser)))
+  (flash-region (org-element-property :answer-begin e)
+                (org-element-property :answer-end e)))
+
 ;;; Appearance
 (defvar org-study-studystamp-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "n") 'org-study-next)
     (define-key map (kbd "N") 'org-study-next-for-review)
     (define-key map (kbd "a") 'org-study-review)
+    (define-key map (kbd "?") 'org-study-show-boundaries)
     map)
   "Keymap when cursor is on a studystamp for `org-study'")
 
