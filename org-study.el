@@ -40,7 +40,12 @@ day."
      (cons (match-beginning 0) (match-end 0)))
     (explicit
      (looking-back "\\][\t ]*")
-     (cons (match-beginning 0) (match-end 0)))
+     (let ((beginning nil) (end nil))
+       (backward-list)
+       (setq beginning (point))
+       (forward-list)
+       (setq end (point))
+       (cons beginning end)))
     (description
      (save-excursion (org-backward-element) (org-at-item-description-p))
      (cons 
@@ -342,14 +347,8 @@ beginning position."
                                         ;; (compose-region s e (concat "\t" correct-answer))
                                         (put-text-property s e 'display correct-answer)
                                         (put-text-property s e 'face 'bold)
-                                        (put-text-property s e 'help-echo all-options)
-                                        ;; (put-text-property
-                                        ;;  s e 'modification-hooks
-                                        ;;  (list
-                                        ;;   clear-line-properties))
-                                        ))
-                                    nil)
-                                  ))))))
+                                        (put-text-property s e 'help-echo all-options)))
+                                    nil)))))))
 
 (defun org-remove-font-lock-display-properties (beg end)
   "Originally defined in org.el, overwritten to remove all
