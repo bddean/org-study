@@ -83,11 +83,10 @@ beginning position."
     (when (search-forward-regexp org-studystamp-re nil t)
       (cons 'studystamp (match-beginning 0)))))
 
-
-
 (add-to-list 'org-element-all-objects    'multchoice)
 (add-to-list 'org-element-all-successors 'multchoice)
-(defvar org-study-multiple-choice-re "\\[[^]/]*/[^]/]*\\]")
+
+(defvar org-study-multiple-choice-re "\\[\\([^]/]*/\\)*\\(\\s *\\*[^]/]*\\)\\(/\\s [^]/]*\\)*\\]")
 (defun org-element-study-multchoice-interpreter (multchoice &optional contents)
   (let ((i -1))
     (concat "["
@@ -279,6 +278,7 @@ studystamp. Can't parse it because this function is called from
 
 (defvar org-study-complements '(("true" "false")
                                 ("positive" "negative")
+                                ("same" "opposite")
                                 ("virtual" "real")
                                 ("upright" "inverted")
                                 ("is" "isn't")
