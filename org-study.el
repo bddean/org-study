@@ -1,5 +1,6 @@
 (require 'cl)
 
+
 ;;; Utilities
 (defun flash-region (start end &optional timeout)
   "Borrowed from skewer.el. Temporarily highlight region from START to END."
@@ -22,16 +23,18 @@ day."
                      0
                    1)))
 
+
 ;;; Define a stamp that schedules a note for review
 (require 'org-element)
 (add-to-list 'org-element-all-objects    'studystamp)
 (add-to-list 'org-element-all-successors 'studystamp)
+;; [
 (defvar org-studystamp-re
-  (concat "STUDY{"
+  (concat "STUDY\\(<\\|{\\)"
           org-ts-regexp-both ","
           "\\([0-9]*\\)"     ","   ; next interval
           "\\([0-9]*\\.?[0-9]*\\)" ; ease factor
-          "}"))
+          "\\(>\\|}\\)"))
 
 (defun org-element-studystamp-parser ()
   "Parse studystamp object at point.
@@ -45,17 +48,21 @@ Assume point is at the beginning of 'study'."
     (looking-at org-studystamp-re)
     (let ((begin (match-beginning 0))
           (end (match-end 0))
+          (active-p (equal (org-match-string-no-properties 1) "{"))
           (review-day
            (save-match-data
              (org-time-string-to-absolute
-              (org-match-string-no-properties 1))))
-          (interval (string-to-int (org-match-string-no-properties 2)))
-          (ease (string-to-int (org-match-string-no-properties 3)))
+              (org-match-string-no-properties 2))))
+          (interval (string-to-int (org-match-string-no-properties 3)))
+          (ease (string-to-int (org-match-string-no-properties 4)))
           (answer-category (org-study-get-answer-category))
           (answer-bounds (org-study-answer-bounds)))
+
+      (setq active-p (eq (char-after (+ (point) 5)) ?{)) 
       (list 'studystamp
             (list :begin begin
                   :end end
+                  :active-p active-p
                   :review-day review-day
                   :interval interval
                   :ease ease
@@ -66,13 +73,18 @@ Assume point is at the beginning of 'study'."
 (defun org-element-studystamp-interpreter (studystamp contents)
   "interpret STUDYSTAMP object as org syntax.
 contents is nil"
-  (format "STUDY{%s,%d,%.2f}"
-          (format-time-string (org-time-stamp-format nil 'inactive)
-                              (org-time-from-absolute
-                               (org-element-property :review-day
-                                                     studystamp)))
-          (org-element-property :interval studystamp)
-          (org-element-property :ease     studystamp)))
+  (let ((delim (if (org-element-property :active-p studystamp)
+                   '("{" . "}")
+                 '("<" . ">"))))
+    (format "STUDY%s%s,%d,%.2f%s"
+            (car delim)
+            (format-time-string (org-time-stamp-format nil 'inactive)
+                                (org-time-from-absolute
+                                 (org-element-property :review-day
+                                                       studystamp)))
+            (org-element-property :interval studystamp)
+            (org-element-property :ease     studystamp)
+            (cdr delim))))
 
 (defun org-element-studystamp-successor ()
   "Search for the next studystamp object.
@@ -265,9 +277,16 @@ studystamp. Can't parse it because this function is called from
   (remove-overlays (org-element-property :answer-begin studystamp)
                    (org-element-property :answer-end studystamp)))
 
+(define-minor-mode org-study-cram-mode
+  "Make all cards due for review"
+  nil
+  "Cramming")
+
 (defun org-study-due-for-review-p (&optional studystamp)
   (setq studystamp (or studystamp (org-element-studystamp-parser)))
-  (<= (org-element-property :review-day studystamp) (org-study-today)))
+  (and (or org-study-cram-mode
+           (<= (org-element-property :review-day studystamp) (org-study-today)))
+       (org-element-property :active-p studystamp)))
 
 (defun org-study-prepare-buffer ()
   (let ((e))
@@ -353,36 +372,61 @@ studystamp. Can't parse it because this function is called from
     (unless (> score 0)
       (org-study-hide-answer e))))
 
+(defun org-study-toggle-supend-state (&optional e)
+  (interactive)
+  (setq e (or e (org-element-studystamp-parser)))
+  (org-element-put-property e :active-p (not (org-element-property :active-p e)))
+  (save-excursion
+    (goto-char (org-element-property :begin e))
+    (delete-region (org-element-property :begin e)
+                   (org-element-property :end e))
+    (insert (org-element-studystamp-interpreter e nil))))
+
 (defun org-study-show-boundaries (&optional e)
   (interactive)
   (setq e (or e (org-element-studystamp-parser)))
   (flash-region (org-element-property :answer-begin e)
                 (org-element-property :answer-end e)))
 
+
 ;;; Appearance
 (defvar org-study-studystamp-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "n") 'org-study-next)
     (define-key map (kbd "N") 'org-study-next-for-review)
     (define-key map (kbd "a") 'org-study-review)
+    (define-key map (kbd "s") 'org-study-toggle-supend-state)
     (define-key map (kbd "?") 'org-study-show-boundaries)
     map)
   "Keymap when cursor is on a studystamp for `org-study'")
 
 
+(defface org-study-suspended-card '())
+
+(defvar org-study-active-glyph ?♥)
+(defvar org-study-inactive-glyph ?♠)
 (defun org-study-font-lock ()
   (font-lock-add-keywords nil
                           `(( ,org-studystamp-re 
                               (0 (progn
-                                   (let ((s (match-beginning 0))
-                                         (e (match-end 0)))
-                                     (compose-region
-                                      s e ?♠)
+                                   (let* ((s (match-beginning 0))
+                                          (e (match-end 0))
+                                          (stamp (save-excursion
+                                                   (goto-char s)
+                                                   (save-match-data
+                                                     (org-element-studystamp-parser)))))
+                                     (setq the-stamp-variable stamp)
+                                     (compose-region s e
+                                                     (if (org-element-property :active-p
+                                                                               stamp)
+                                                         org-study-active-glyph
+                                                       org-study-inactive-glyph))
                                      (put-text-property
-                                      s e 'face (if (save-match-data
-                                                      (org-study-due-for-review-p))
-                                                    'font-lock-string-face
-                                                  'font-lock-comment-face))
+                                      s e 'face
+                                      (if (save-match-data
+                                            (org-study-due-for-review-p))
+                                          'font-lock-string-face
+                                        font-lock-comment-face))
                                      (put-text-property
                                       s e 'help-echo
                                       (substring-no-properties (match-string 0)))
@@ -404,7 +448,6 @@ studystamp. Can't parse it because this function is called from
                                                                 (1- (save-excursion
                                                                       (search-forward-regexp
                                                                        "/\\|]" e t)))))
-                                        ;; (compose-region s e (concat "\t" correct-answer))
                                         (put-text-property s e 'display correct-answer)
                                         (put-text-property s e 'face 'bold)
                                         (put-text-property s e 'help-echo all-options)))
