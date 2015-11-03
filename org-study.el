@@ -1,3 +1,5 @@
+;; TODO definitions special form for underlining
+
 (require 'cl)
 
 
@@ -13,6 +15,9 @@ White space here is any of: space, tab, emacs newline (line feed, ASCII 10).
 From http://xahlee.blogspot.com/2011/09/emacs-lisp-function-to-trim-string.html"
   (replace-regexp-in-string "\\`[ \t\n]*" ""
                             (replace-regexp-in-string "[ \t\n]*\\'" "" string)))
+
+
+;; TODO just replace with `org-extend-today-until
 (defvar org-study-hour-day-begins 4)
 (defun org-study-today ()
   "Like org-today, but start days later than midnight. So if the
@@ -145,8 +150,8 @@ beginning position."
                                  (length (org-element-property :choices e))))
     (delete-region (org-element-property :begin e)
                    (org-element-property :end e))
-    (save-excursion (insert (org-element-study-multchoice-interpreter e))))
-  )
+    (save-excursion (insert (org-element-study-multchoice-interpreter e)))))
+
 (defvar org-study-answer-categories
   '((multiple-choice
      (looking-back (concat org-study-multiple-choice-re "\s*"))
@@ -167,7 +172,13 @@ beginning position."
     (subtree
      (or (org-at-heading-p) (org-at-item-p))
      (cons (progn (forward-line) (point))
-           (progn (org-end-of-subtree) (point)))))
+           (progn (org-end-of-subtree 'invisible-ok) (point))))
+    (table-cell
+     (org-at-table-p)
+     (cons (save-excursion (org-table-beginning-of-field 1)
+                           (point))
+           (save-excursion (org-table-end-of-field 1)
+                           (point)))))
 
   "A list of card types recognizable by studystamps. Each type is
 in the form NAME, PREDICATE, BOUNDS, where NAME is a symbol to
@@ -200,18 +211,7 @@ studystamp. Can't parse it because this function is called from
   (save-excursion (eval (nth 2 (org-study-get-answer-category)))))
 
 
-(defun org-study-create ()
-  "Insert a studystamp at point"
-  (interactive)
-  (org-insert-time-stamp (current-time) nil 'inactive "STUDY{"
-                         (format ",1,%.2f}" org-study-starting-ease))
-  (save-excursion
-    (backward-list) (goto-char (cdr (org-element-timestamp-successor))) ; go to timestamp
-    (org-timestamp-up-day)
-    (backward-char 6) ;; Go to beginning of studystamp TODO do this by rearranging save-excursions isntead
-    (let ((e (org-element-studystamp-parser)))
-      (flash-region (org-element-property :answer-begin e)
-                    (org-element-property :answer-end e)))))
+
 
 ;;; Creating and reviewing flashcards
 ;; TODO: allow customization with properties in the org file
@@ -267,7 +267,8 @@ studystamp. Can't parse it because this function is called from
          (ov (make-overlay s e)))
     (if (eq (org-element-property :category-name studystamp) 'multiple-choice)
         (progn (overlay-put ov 'display
-                            (replace-in-string (buffer-substring-no-properties s e) "*" ""))
+                            (replace-regexp-in-string (regexp-quote "*") ""
+                                                      (buffer-substring-no-properties s e)))
                (overlay-put ov 'face
                             (list :underline (face-attribute 'default :foreground))))
       (overlay-put ov 'face (list :underline (face-attribute 'default :foreground)
@@ -296,8 +297,11 @@ studystamp. Can't parse it because this function is called from
         (org-study-hide-answer e)))))
 
 (defvar org-study-complements '(("true" "false")
+                                ("open" "closed")
                                 ("positive" "negative")
                                 ("same" "opposite")
+                                ("higher" "lower")
+                                ("high" "low")
                                 ("virtual" "real")
                                 ("upright" "inverted")
                                 ("is" "isn't")
@@ -325,7 +329,7 @@ studystamp. Can't parse it because this function is called from
                          (format ",1,%.2f}" org-study-starting-ease))
   (save-excursion
     (backward-list) (goto-char (cdr (org-element-timestamp-successor))) ; go to timestamp
-    (org-timestamp-up-day)
+    ;; (org-timestamp-up-day) ; Seems broken!
     (backward-char 6) ;; Go to beginning of studystamp TODO do this by rearranging save-excursions isntead
     (let ((e (org-element-studystamp-parser)))
       (flash-region (org-element-property :answer-begin e)
@@ -401,57 +405,62 @@ studystamp. Can't parse it because this function is called from
   "Keymap when cursor is on a studystamp for `org-study'")
 
 
-(defface org-study-suspended-card '())
+;; (defface org-study-suspended-card '())
 
 (defvar org-study-active-glyph ?♥)
 (defvar org-study-inactive-glyph ?♠)
 (defun org-study-font-lock ()
-  (font-lock-add-keywords nil
-                          `(( ,org-studystamp-re 
-                              (0 (progn
-                                   (let* ((s (match-beginning 0))
-                                          (e (match-end 0))
-                                          (stamp (save-excursion
-                                                   (goto-char s)
-                                                   (save-match-data
-                                                     (org-element-studystamp-parser)))))
-                                     (setq the-stamp-variable stamp)
-                                     (compose-region s e
-                                                     (if (org-element-property :active-p
-                                                                               stamp)
-                                                         org-study-active-glyph
-                                                       org-study-inactive-glyph))
-                                     (put-text-property
-                                      s e 'face
-                                      (if (save-match-data
-                                            (org-study-due-for-review-p))
-                                          'font-lock-string-face
-                                        font-lock-comment-face))
-                                     (put-text-property
-                                      s e 'help-echo
-                                      (substring-no-properties (match-string 0)))
-                                     (put-text-property
-                                      s e 'keymap org-study-studystamp-map
-                                      ))
-                                   nil)))
-                            (,org-study-multiple-choice-re
-                             (0 (save-match-data
-                                  (save-excursion
-                                    (let ((s (match-beginning 0))
-                                          (e (match-end 0))
-                                          (correct-answer))
-                                      (goto-char s)
-                                      (when (search-forward "*" e t)
-                                        (setq all-options (buffer-substring s e))
-                                        (setq correct-answer
-                                              (buffer-substring (point)
-                                                                (1- (save-excursion
-                                                                      (search-forward-regexp
-                                                                       "/\\|]" e t)))))
-                                        (put-text-property s e 'display correct-answer)
-                                        (put-text-property s e 'face 'bold)
-                                        (put-text-property s e 'help-echo all-options)))
-                                    nil)))))))
+  (font-lock-add-keywords
+   nil
+   `(( ,org-studystamp-re 
+       (0 (progn
+            (let* ((s (match-beginning 0))
+                   (e (match-end 0))
+                   (stamp (save-excursion
+                            (goto-char s)
+                            (save-match-data
+                              (org-element-studystamp-parser)))))
+              (setq the-stamp-variable stamp)
+              (compose-region s e
+                              (if (org-element-property :active-p
+                                                        stamp)
+                                  org-study-active-glyph
+                                org-study-inactive-glyph))
+              ;; Text composition confuses orgmode tables, but invisibility
+              ;; doesn't. Making all but one character invisible ensures that tables treat
+              ;; it as a single string.
+              (put-text-property (1+ s) e 'invisible t)
+              (put-text-property
+               s e 'face
+               (if (save-match-data
+                     (org-study-due-for-review-p))
+                   'font-lock-string-face
+                 font-lock-comment-face))
+              (put-text-property
+               s e 'help-echo
+               (substring-no-properties (match-string 0)))
+              (put-text-property
+               s e 'keymap org-study-studystamp-map
+               ))
+            nil)))
+     (,org-study-multiple-choice-re
+      (0 (save-match-data
+           (save-excursion
+             (let ((s (match-beginning 0))
+                   (e (match-end 0))
+                   (correct-answer))
+               (goto-char s)
+               (when (search-forward "*" e t)
+                 (setq all-options (buffer-substring s e))
+                 (setq correct-answer
+                       (buffer-substring (point)
+                                         (1- (save-excursion
+                                               (search-forward-regexp
+                                                "/\\|]" e t)))))
+                 (put-text-property s e 'display correct-answer)
+                 (put-text-property s e 'face 'bold)
+                 (put-text-property s e 'help-echo all-options)))
+             nil)))))))
 
 (defun org-remove-font-lock-display-properties (beg end)
   "Originally defined in org.el, overwritten to remove all
