@@ -264,6 +264,7 @@ studystamp. Can't parse it because this function is called from
 ;;; Presenting reviewable notes to the user
 (defun org-study-next-for-review (&optional idempotent)
   "Go to the next question that's due for review"
+  (push-mark)
   (interactive)
   (unless idempotent (forward-char))
   (let ((e         nil)
