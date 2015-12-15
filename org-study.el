@@ -1,4 +1,4 @@
-;; TODO definitions special form for underlining
+;; TODO definitions special form for underlining, more generic definitions
 
 (require 'cl)
 
@@ -171,8 +171,8 @@ beginning position."
       (save-excursion (org-end-of-item) (point))))
     (subtree
      (or (org-at-heading-p) (org-at-item-p))
-     (cons (progn (forward-line) (point))
-           (progn (org-end-of-subtree 'invisible-ok) (point))))
+     (cons (save-excursion (forward-line) (point))
+           (progn (org-end-of-item) (point))))
     (table-cell
      (org-at-table-p)
      (cons (save-excursion (org-table-beginning-of-field 1)
@@ -260,7 +260,26 @@ studystamp. Can't parse it because this function is called from
                      (org-element-property :end e))
       (insert (org-element-studystamp-interpreter e nil)))))
 
+
 ;;; Presenting reviewable notes to the user
+(defun org-study-next-for-review (&optional idempotent)
+  "Go to the next question that's due for review"
+  (interactive)
+  (unless idempotent (forward-char))
+  (let ((e         nil)
+        (successor nil))
+    (while (and
+            (setq successor (org-element-studystamp-successor))
+            (goto-char (cdr successor))
+            (setq e (org-element-studystamp-parser))
+            (not (org-study-due-for-review-p e)))
+      (forward-char))
+    (when (called-interactively-p)
+      (org-show-entry))
+    e))
+(define-key org-mode-map (kbd "C-c n") 'org-study-next-for-review)
+
+
 (defun org-study-hide-answer (studystamp)
   (let* ((s (org-element-property :answer-begin studystamp))
          (e (org-element-property :answer-end studystamp))
@@ -275,8 +294,20 @@ studystamp. Can't parse it because this function is called from
                                   :foreground (face-attribute 'default :background)))))) 
 
 (defun org-study-reveal-answer (studystamp)
-  (remove-overlays (org-element-property :answer-begin studystamp)
-                   (org-element-property :answer-end studystamp)))
+  (let ((begin (org-element-property :answer-begin studystamp))
+        (end (org-element-property :answer-end studystamp))
+        (e))
+    (remove-overlays begin end)
+
+    ;; Hide any flashcards nested in the answer
+    ;; TODO: hide region that is part of an answer whose studystamp is outside
+    ;;       the answer we are now revealing
+    (save-excursion
+      (goto-char begin)
+      (while (and (setq e (org-study-next-for-review))
+                  (<= (point) end))
+        (org-study-hide-answer e)))))
+
 
 (define-minor-mode org-study-cram-mode
   "Make all cards due for review"
@@ -340,23 +371,6 @@ studystamp. Can't parse it because this function is called from
   (forward-char)
   (goto-char (cdr (org-element-studystamp-successor)))
   (org-show-entry))
-
-(defun org-study-next-for-review (&optional idempotent)
-  "Go to the next question that's due for review"
-  (interactive)
-  (unless idempotent (forward-char))
-  (let ((e         nil)
-        (successor nil))
-    (while (and
-            (setq successor (org-element-studystamp-successor))
-            (goto-char (cdr successor))
-            (setq e (org-element-studystamp-parser))
-            (not (org-study-due-for-review-p e)))
-      (forward-char))
-    (when (called-interactively-p)
-      (org-show-entry))
-    e))
-(define-key org-mode-map (kbd "C-c n") 'org-study-next-for-review)
 
 (defun org-study-review ()
   (interactive)
