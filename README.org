@@ -1,13 +1,36 @@
+* Explanation
 Study Emacs [[http://orgmode.org][Org Mode]] files with [[http://en.wikipedia.org/wiki/Spaced_repetition][spaced repetition]].
 
-Spaced repetition is a useful tool for memorizing content. But most
-spaced repetition software divides knowledge into atomic flashcards
-that aren't synchronized with notes. This extension to Org Mode
-provides annotations for studying notes directly. Parts of a file are
-marked for study by an unobtrusive annotation.
+Most spaced repetition software (SRS), including [[http://orgmode.org/worg/org-contrib/org-drill.html][org-drill.el]], drills the user
+on atomic facts divided into flashcards. The idea behind org-study.el is to
+embed flashcards directly into notes or study materials as unobtrusively as
+possible, so that passive and active recall can be part of the same study
+session, and flashcard creation is a natural part of note-taking.
 
 Right now, only simple fill-in-the-blank questions with a single
 answer and multiple choice questions are supported.
 
-The spaced repetition algorithm I use is based on the flashcard
-program [[http://ankisrs.net/][anki]].
+The spaced repetition algorithm I use is based on the SRS [[http://ankisrs.net/][anki]].
+
+To use, put this in your init file:
+
+#+BEGIN_SRC emacs-lisp
+  (add-to-list 'load-path "/path/to/org-study")
+  (require 'org-study)
+#+END_SRC
+* To do list
+** TODO better cards types
+Rewrite the system for defining cards types to be more general and easy to
+understand
+** TODO depend on org-learn.el
+There is already a spaced-repetition extension for org-mode, and I should borrow
+the algorithm from that instead of recreating it
+** TODO store flashcard data better
+Flashcard scheduling data is stored inline like this:
+
+#+BEGIN_EXAMPLE
+  STUDY{[2015-07-22 Wed],130,130 }
+#+END_EXAMPLE
+
+Although font-lock collapses it into 
+** TODO integrate with org-agenda
