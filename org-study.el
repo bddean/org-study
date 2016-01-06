@@ -9,6 +9,7 @@
   (let ((overlay (make-overlay start end)))
     (overlay-put overlay 'face 'secondary-selection)
     (run-with-timer (or timeout 0.35) nil 'delete-overlay overlay)))
+
 (defun trim-string (string)
   "Remove white spaces in beginning and ending of STRING.
 White space here is any of: space, tab, emacs newline (line feed, ASCII 10).
@@ -33,7 +34,7 @@ day."
 (require 'org-element)
 (add-to-list 'org-element-all-objects    'studystamp)
 (add-to-list 'org-element-all-successors 'studystamp)
-;; [
+
 (defvar org-studystamp-re
   (concat "STUDY\\(<\\|{\\)"
           org-ts-regexp-both ","
@@ -116,6 +117,7 @@ beginning position."
              (org-element-property :choices multchoice)
              "/")
             "]")))
+
 (defun org-element-study-multchoice-parser ()
   (save-excursion
     (looking-at org-study-multiple-choice-re)
@@ -301,8 +303,6 @@ studystamp. Can't parse it because this function is called from
     (remove-overlays begin end)
 
     ;; Hide any flashcards nested in the answer
-    ;; TODO: hide region that is part of an answer whose studystamp is outside
-    ;;       the answer we are now revealing
     (save-excursion
       (goto-char begin)
       (while (and (setq e (org-study-next-for-review))
@@ -362,7 +362,7 @@ studystamp. Can't parse it because this function is called from
   (save-excursion
     (backward-list) (goto-char (cdr (org-element-timestamp-successor))) ; go to timestamp
     ;; (org-timestamp-up-day) ; Seems broken!
-    (backward-char 6) ;; Go to beginning of studystamp TODO do this by rearranging save-excursions isntead
+    (backward-char 6) ;; Go to beginning of studystamp TODO do this by rearranging save-excursions instead
     (let ((e (org-element-studystamp-parser)))
       (flash-region (org-element-property :answer-begin e)
                     (org-element-property :answer-end e)))))
@@ -424,6 +424,7 @@ studystamp. Can't parse it because this function is called from
 
 (defvar org-study-active-glyph ?♥)
 (defvar org-study-inactive-glyph ?♠)
+
 (defun org-study-font-lock ()
   (font-lock-add-keywords
    nil
