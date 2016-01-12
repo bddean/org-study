@@ -1,5 +1,3 @@
-;; TODO definitions special form for underlining, more generic definitions
-
 (require 'cl)
 
 

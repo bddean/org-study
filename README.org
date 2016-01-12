@@ -32,5 +32,8 @@ Flashcard scheduling data is stored inline like this:
   STUDY{[2015-07-22 Wed],130,130 }
 #+END_EXAMPLE
 
-Although font-lock collapses it into 
+Although font-lock can collapse it into one character this is not ideal
+
+Look at org-archive for undoable operations involving other files
 ** TODO integrate with org-agenda
+** TODO hints
