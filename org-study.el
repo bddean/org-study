@@ -31,7 +31,6 @@ day."
 ;;; Define a stamp that schedules a note for review
 (require 'org-element)
 (add-to-list 'org-element-all-objects    'studystamp)
-(add-to-list 'org-element-all-successors 'studystamp)
 
 (defvar org-studystamp-re
   (concat "STUDY\\(<\\|{\\)"
@@ -100,7 +99,6 @@ beginning position."
       (cons 'studystamp (match-beginning 0)))))
 
 (add-to-list 'org-element-all-objects    'multchoice)
-(add-to-list 'org-element-all-successors 'multchoice)
 
 (defvar org-study-multiple-choice-re "\\[\\([^]/]*/\\)*\\(\\s *\\*[^]/]*\\)\\(/\\s [^]/]*\\)*\\]")
 (defun org-element-study-multchoice-interpreter (multchoice &optional contents)
