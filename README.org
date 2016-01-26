@@ -19,6 +19,8 @@ To use, put this in your init file:
   (require 'org-study)
 #+END_SRC
 * To do list
+** TODO BUG: [*does/doesn't]
+** TODO study stamp at a numbered list should hide the rest of the list
 ** TODO better cards types
 Rewrite the system for defining cards types to be more general and easy to
 understand
@@ -35,5 +37,10 @@ Flashcard scheduling data is stored inline like this:
 Although font-lock can collapse it into one character this is not ideal
 
 Look at org-archive for undoable operations involving other files
+
+And it looks like the current scheduling algorithm isn't quite right
+
 ** TODO integrate with org-agenda
 ** TODO hints
+** TODO work with org-toggle-time-stamp-overlays
+
